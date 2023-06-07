@@ -27,7 +27,7 @@ Current status: (Made in the original implementation)
 - You can move through the map, collide with walls, collect items and interact with enemies. I could also add the jogging effect, like Doom´s one.
 - The enemies AI, despite is very simple, I think works very well and it´s enough for the purpose of the game. Looks very similar to  Imp enemy from original Doom.
 - For the HUD, I realized that the native `print` from Adafruit's library uses too much memory. So I've implemented my custom text rendering methods and a custom font which includes only needed characters and some icons.
-- FPS and memory consumption has been improved using a slim and customized version of the SSD1306 lib from Adafruit. Thanks  [@miracoly](https://github.com/miracoli) -> Which doe not hold true for my implementation
+- FPS and memory consumption has been improved using a slim and customized version of the SSD1306 lib from Adafruit. Thanks  [@miracoly](https://github.com/miracoli) -> Which does not hold true for my implementation
 - Now it has a basic sound support through Pin 9. Thanks again [@miracoly](https://github.com/miracoli)! -> Since the SPiC-Board has no sound output, I did cut this feature
 
 (I'd like) To do:
