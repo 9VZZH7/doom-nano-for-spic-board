@@ -1,7 +1,7 @@
 /* 
 todo: Moving this to CPP looks like it takes more Flash storage. Figure out why.
 */
-#include "SSD1306.h"
+#include "old_SSD1306.h"
 #include "constants.h"
 
 // Reads a char from an F() string
@@ -54,6 +54,14 @@ void setupDisplay() {
 
   // initialize z buffer
   memset(zbuffer, 0xFF, ZBUFFER_SIZE);
+}
+
+void drawHealth(uint8_t health){
+	sb_led_showLevel(health, 100);
+}
+
+void drawKeys(uint8_t keys){
+	sb_7seg_showNumber(keys);
 }
 
 // Adds a delay to limit play to specified fps

@@ -1,59 +1,62 @@
-#include "constants.h"
+#include <avr/interrupt.h>
+#include <util/delay.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+
 #include "level.h"
 #include "sprites.h"
 #include "input.h"
 #include "entities.h"
 #include "types.h"
-#include "display.h"
-#include "sound.h"
+#include "display_wrap.h"
+#include "constants.h"
+#include "7seg.h"
+#include "timer.h"
+#include <string.h>
 
-// Useful macros
 #define swap(a, b)            do { typeof(a) temp = a; a = b; b = temp; } while (0)
 #define sign(a, b)            (double) (a > b ? 1 : (b > a ? -1 : 0))
 
+
+//extern variables
+
+extern const uint8_t SCREEN_WIDTH;
+extern const uint8_t SCREEN_HEIGHT;
+extern const uint8_t HALF_WIDTH;
+extern const uint8_t RENDER_HEIGHT;
+extern const uint8_t HALF_HEIGHT;
+extern volatile double delta;
+extern uint8_t display_buf[1024];
+extern uint8_t zbuffer[64];
+
 // general
-uint8_t scene = INTRO;
-bool exit_scene = false;
-bool invert_screen = false;
-uint8_t flash_screen = 0;
+volatile uint8_t scene = INTRO;
+volatile bool exit_scene = false;
+volatile bool invert_screen = false;
+volatile uint8_t flash_screen = 0;
+static uint32_t timer;
 
 // game
 // player and entities
-Player player;
-Entity entity[MAX_ENTITIES];
-StaticEntity static_entity[MAX_STATIC_ENTITIES];
-uint8_t num_entities = 0;
-uint8_t num_static_entities = 0;
+volatile struct Player player;
+struct Entity entity[MAX_ENTITIES];
+struct StaticEntity static_entity[MAX_STATIC_ENTITIES];
+volatile uint8_t num_entities = 0;
+volatile uint8_t num_static_entities = 0;
 
-void setup(void) {
-  setupDisplay();
-  input_setup();
-  sound_init();
+void setup(void){
+	setupDisplay();
+	input_setup();
 }
 
-// Jump to another scene
-void jumpTo(uint8_t target_scene) {
-  scene = target_scene;
-  exit_scene = true;
+void jumpTo(uint8_t target_scene){
+	scene = target_scene;
+	exit_scene = true;
 }
 
-// Finds the player in the map
-void initializeLevel(const uint8_t level[]) {
-  for (uint8_t y = LEVEL_HEIGHT - 1; y >= 0; y--) {
-    for (uint8_t x = 0; x < LEVEL_WIDTH; x++) {
-      uint8_t block = getBlockAt(level, x, y);
 
-      if (block == E_PLAYER) {
-        player = create_player(x, y);
-        return;
-      }
-
-      // todo create other static entities
-    }
-  }
-}
-
-uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y) {
+uint8_t getBlockAtLeg(const uint8_t level[], uint8_t x, uint8_t y) {
   if (x < 0 || x >= LEVEL_WIDTH || y < 0 || y >= LEVEL_HEIGHT) {
     return E_FLOOR;
   }
@@ -64,9 +67,73 @@ uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y) {
          & 0b1111;               // mask wanted bits
 }
 
+uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y){
+	uint8_t N = 57;
+	uint8_t M = 64;
+	// filter edges
+	if((x <= 0) || (x >= M - 2)){
+		return E_WALL;
+	}
+	if((y <= 1) || (y >= N - 1)){
+		return E_WALL;
+	}
+	
+	// shift indizes
+	x = x - 1;
+	y = y - 2;
+	y = 54 - 1 - y;
+
+	// get position where block is in array
+	uint8_t first_info = pgm_read_byte(sto_level_1_lin + 3 * y);
+	uint8_t second_info = pgm_read_byte(sto_level_1_lin + 3 * y + 1);
+	uint8_t third_info = pgm_read_byte(sto_level_1_lin + 3 * y + 2);
+	uint16_t pos = ((first_info << 8) | second_info) >> 6;
+	uint8_t last_floor = ((first_info << 8) | second_info) & 0b000000000000111111;
+	uint8_t last_wall = third_info;
+	
+	// check whether to check array
+	if(x > M - 3 - last_wall){ 
+		return E_WALL;
+	}
+	if(x > M - 3 - last_wall - last_floor){ 
+		return E_FLOOR;
+	}
+
+	// actually read byte
+	uint8_t fields = pgm_read_byte(sto_level_1_lin + (pos + (x >> 1)));
+	if(x & 1){
+		return fields & 0b00001111;
+	}else{
+		return fields >> 4;
+	}
+	return E_FLOOR;
+}
+
+// Finds the player in the map
+void initializeLevel(const uint8_t level[]) {
+  player = create_player(29, 10);
+  return;
+  /*
+  for (uint8_t y = LEVEL_HEIGHT - 1; y >= 0; y--) {
+    for (uint8_t x = 0; x < LEVEL_WIDTH; x++) {
+      uint8_t block = getBlockAt(level, x, y);
+
+      if (block == E_PLAYER) {
+        player = create_player(x, y);
+        return;
+      }
+
+      // TODO: create other static entities
+    }
+  }
+  */
+}
+
 bool isSpawned(UID uid) {
   for (uint8_t i = 0; i < num_entities; i++) {
-    if (entity[i].uid == uid) return true;
+    if (entity[i].uid == uid){
+    	return true;
+    }
   }
 
   return false;
@@ -74,7 +141,9 @@ bool isSpawned(UID uid) {
 
 bool isStatic(UID uid) {
   for (uint8_t i = 0; i < num_static_entities; i++) {
-    if (static_entity[i].uid == uid) return true;
+    if (static_entity[i].uid == uid) {
+    	return true;
+    }
   }
 
   return false;
@@ -123,7 +192,7 @@ void spawnFireball(double x, double y) {
   num_entities++;
 }
 
-void removeEntity(UID uid, bool makeStatic = false) {
+void removeEntity(UID uid, bool makeStatic) { //makeStatic = false
   uint8_t i = 0;
   bool found = false;
 
@@ -136,6 +205,7 @@ void removeEntity(UID uid, bool makeStatic = false) {
 
     // displace entities
     if (found) {
+    // TODO: makeStatic
       entity[i] = entity[i + 1];
     }
 
@@ -162,14 +232,13 @@ void removeStaticEntity(UID uid) {
   }
 }
 
-UID detectCollision(const uint8_t level[], Coords *pos, double relative_x, double relative_y, bool only_walls = false) {
+UID detectCollision(const uint8_t level[], struct Coords *pos, double relative_x, double relative_y, bool only_walls) { // only_walls = false
   // Wall collision
-  uint8_t round_x = int(pos->x + relative_x);
-  uint8_t round_y = int(pos->y + relative_y);
+  uint8_t round_x = (int)(pos->x + relative_x);
+  uint8_t round_y = (int)(pos->y + relative_y);
   uint8_t block = getBlockAt(level, round_x, round_y);
 
   if (block == E_WALL) {
-    playSound(hit_wall_snd, HIT_WALL_SND_LEN);
     return create_uid(block, round_x, round_y);
   }
 
@@ -191,7 +260,7 @@ UID detectCollision(const uint8_t level[], Coords *pos, double relative_x, doubl
       continue;
     }
 
-    Coords new_coords = { entity[i].pos.x - relative_x, entity[i].pos.y - relative_y };
+    struct Coords new_coords = { entity[i].pos.x - relative_x, entity[i].pos.y - relative_y };
     uint8_t distance = coords_distance(pos, &new_coords);
 
     // Check distance and if it's getting closer
@@ -203,9 +272,22 @@ UID detectCollision(const uint8_t level[], Coords *pos, double relative_x, doubl
   return UID_null;
 }
 
+int translateIntoView(struct Coords *pos, struct Coords * buf) {
+  //translate sprite position to relative to camera
+  double sprite_x = pos->x - player.pos.x;
+  double sprite_y = pos->y - player.pos.y;
+
+  //required for correct matrix multiplication
+  double inv_det = 1.0 / (player.plane.x * player.dir.y - player.dir.x * player.plane.y);
+  double transform_x = inv_det * (player.dir.y * sprite_x - player.dir.x * sprite_y);
+  double transform_y = inv_det * (- player.plane.y * sprite_x + player.plane.x * sprite_y); // Z in screen
+  buf->x = transform_x;
+  buf->y = transform_y;
+  return 0;
+}
+
 // Shoot
 void fire() {
-  playSound(shoot_snd, SHOOT_SND_LEN);
 
   for (uint8_t i = 0; i < num_entities; i++) {
     // Shoot only ALIVE enemies
@@ -213,11 +295,12 @@ void fire() {
       continue;
     }
 
-    Coords transform = translateIntoView(&(entity[i].pos));
-    if (abs(transform.x) < 20 && transform.y > 0) {
-      uint8_t damage = (double) min(GUN_MAX_DAMAGE, GUN_MAX_DAMAGE / (abs(transform.x) * entity[i].distance) / 5);
+    struct Coords transform;
+    translateIntoView(&(entity[i].pos), &transform);
+    if (fabs(transform.x) < 20 && transform.y > 0) {
+      uint8_t damage = (double) fmin(GUN_MAX_DAMAGE, GUN_MAX_DAMAGE / (fabs(transform.x) * entity[i].distance) / 5);
       if (damage > 0) {
-        entity[i].health = max(0, entity[i].health - damage);
+        entity[i].health = fmax(0, entity[i].health - damage);
         entity[i].state = S_HIT;
         entity[i].timer = 4;
       }
@@ -226,7 +309,7 @@ void fire() {
 }
 
 // Update coords if possible. Return the collided uid, if any
-UID updatePosition(const uint8_t level[], Coords *pos, double relative_x, double relative_y, bool only_walls = false) {
+UID updatePosition(const uint8_t level[], struct Coords *pos, double relative_x, double relative_y, bool only_walls) { // only_walls = false
   UID collide_x = detectCollision(level, pos, relative_x, 0, only_walls);
   UID collide_y = detectCollision(level, pos, 0, relative_y, only_walls);
 
@@ -236,6 +319,12 @@ UID updatePosition(const uint8_t level[], Coords *pos, double relative_x, double
   return collide_x || collide_y || UID_null;
 }
 
+// Render values for the HUD
+void updateHud() {
+  drawHealth(player.health);
+  drawKeys(player.keys);
+}
+
 void updateEntities(const uint8_t level[]) {
   uint8_t i = 0;
   while (i < num_entities) {
@@ -243,12 +332,12 @@ void updateEntities(const uint8_t level[]) {
     entity[i].distance = coords_distance(&(player.pos), &(entity[i].pos));
 
     // Run the timer. Works with actual frames.
-    // Todo: use delta here. But needs double type and more memory
+    // TODO: use delta here. But needs double type and more memory
     if (entity[i].timer > 0) entity[i].timer--;
 
     // too far away. put it in doze mode
     if (entity[i].distance > MAX_ENTITY_DISTANCE) {
-      removeEntity(entity[i].uid);
+      removeEntity(entity[i].uid, false);
       // don't increase 'i', since current one has been removed
       continue;
     }
@@ -311,7 +400,7 @@ void updateEntities(const uint8_t level[]) {
                 entity[i].timer = 10;
               } else if (entity[i].timer == 0) {
                 // Melee attack
-                player.health = max(0, player.health - ENEMY_MELEE_DAMAGE);
+                player.health = fmax(0, player.health - ENEMY_MELEE_DAMAGE);
                 entity[i].timer = 14;
                 flash_screen = 1;
                 updateHud();
@@ -327,10 +416,10 @@ void updateEntities(const uint8_t level[]) {
       case E_FIREBALL: {
           if (entity[i].distance < FIREBALL_COLLIDER_DIST) {
             // Hit the player and disappear
-            player.health = max(0, player.health - ENEMY_FIREBALL_DAMAGE);
+            player.health = fmax(0, player.health - ENEMY_FIREBALL_DAMAGE);
             flash_screen = 1;
             updateHud();
-            removeEntity(entity[i].uid);
+            removeEntity(entity[i].uid, false);
             continue; // continue in the loop
           } else {
             // Move. Only collide with walls.
@@ -344,7 +433,7 @@ void updateEntities(const uint8_t level[]) {
             );
 
             if (collided) {
-              removeEntity(entity[i].uid);
+              removeEntity(entity[i].uid, false);
               continue; // continue in the entity check loop
             }
           }
@@ -354,9 +443,8 @@ void updateEntities(const uint8_t level[]) {
       case E_MEDIKIT: {
           if (entity[i].distance < ITEM_COLLIDER_DIST) {
             // pickup
-            playSound(medkit_snd, MEDKIT_SND_LEN);
             entity[i].state = S_HIDDEN;
-            player.health = min(100, player.health + 50);
+            player.health = fmin(100, player.health + 50);
             updateHud();
             flash_screen = 1;
           }
@@ -366,7 +454,6 @@ void updateEntities(const uint8_t level[]) {
       case E_KEY: {
           if (entity[i].distance < ITEM_COLLIDER_DIST) {
             // pickup
-            playSound(get_key_snd, GET_KEY_SND_LEN);
             entity[i].state = S_HIDDEN;
             player.keys++;
             updateHud();
@@ -388,11 +475,11 @@ void renderMap(const uint8_t level[], double view_height) {
     double camera_x = 2 * (double) x / SCREEN_WIDTH - 1;
     double ray_x = player.dir.x + player.plane.x * camera_x;
     double ray_y = player.dir.y + player.plane.y * camera_x;
-    uint8_t map_x = uint8_t(player.pos.x);
-    uint8_t map_y = uint8_t(player.pos.y);
-    Coords map_coords = { player.pos.x, player.pos.y };
-    double delta_x = abs(1 / ray_x);
-    double delta_y = abs(1 / ray_y);
+    uint8_t map_x = (uint8_t)(player.pos.x);
+    uint8_t map_y = (uint8_t)(player.pos.y);
+    struct Coords map_coords = { player.pos.x, player.pos.y };
+    double delta_x = fabs(1 / ray_x);
+    double delta_y = fabs(1 / ray_y);
 
     int8_t step_x; 
     int8_t step_y;
@@ -457,13 +544,13 @@ void renderMap(const uint8_t level[], double view_height) {
       double distance;
       
       if (side == 0) {
-        distance = max(1, (map_x - player.pos.x + (1 - step_x) / 2) / ray_x);
+        distance = fmax(1, (map_x - player.pos.x + (1 - step_x) / 2) / ray_x);
       } else {
-        distance = max(1, (map_y - player.pos.y + (1 - step_y) / 2) / ray_y);
+        distance = fmax(1, (map_y - player.pos.y + (1 - step_y) / 2) / ray_y);
       }
 
       // store zbuffer value for the column
-      zbuffer[x / Z_RES_DIVIDER] = min(distance * DISTANCE_MULTIPLIER, 255);
+      zbuffer[x / Z_RES_DIVIDER] = fmin(distance * DISTANCE_MULTIPLIER, 255);
 
       // rendered line height
       uint8_t line_height = RENDER_HEIGHT / distance;
@@ -472,7 +559,7 @@ void renderMap(const uint8_t level[], double view_height) {
         x,
         view_height / distance - line_height / 2 + RENDER_HEIGHT / 2,
         view_height / distance + line_height / 2 + RENDER_HEIGHT / 2,
-        GRADIENT_COUNT - int(distance / MAX_RENDER_DEPTH * GRADIENT_COUNT) - side * 2
+        GRADIENT_COUNT - (int)(distance / MAX_RENDER_DEPTH * GRADIENT_COUNT) - side * 2
       );
     }
   }
@@ -498,28 +585,19 @@ uint8_t sortEntities() {
       }
     }
   }
-}
-
-Coords translateIntoView(Coords *pos) {
-  //translate sprite position to relative to camera
-  double sprite_x = pos->x - player.pos.x;
-  double sprite_y = pos->y - player.pos.y;
-
-  //required for correct matrix multiplication
-  double inv_det = 1.0 / (player.plane.x * player.dir.y - player.dir.x * player.plane.y);
-  double transform_x = inv_det * (player.dir.y * sprite_x - player.dir.x * sprite_y);
-  double transform_y = inv_det * (- player.plane.y * sprite_x + player.plane.x * sprite_y); // Z in screen
-
-  return { transform_x, transform_y };
+  return 0;
 }
 
 void renderEntities(double view_height) {
   sortEntities();
 
   for (uint8_t i = 0; i < num_entities; i++) {
-    if (entity[i].state == S_HIDDEN) continue;
+    if (entity[i].state == S_HIDDEN){
+    	continue;
+    }
 
-    Coords transform = translateIntoView(&(entity[i].pos));
+    struct Coords transform;
+    translateIntoView(&(entity[i].pos), &transform);
 
     // don´t render if behind the player or too far away
     if (transform.y <= 0.1 || transform.y > MAX_SPRITE_DEPTH) {
@@ -542,7 +620,7 @@ void renderEntities(double view_height) {
           uint8_t sprite;
           if (entity[i].state == S_ALERT) {
             // walking
-            sprite = int(millis() / 500) % 2;
+            sprite = (int) (timer / 500) % 2;
           } else if (entity[i].state == S_FIRING) {
             // fireball
             sprite = 2;
@@ -620,49 +698,33 @@ void renderEntities(double view_height) {
 
 void renderGun(uint8_t gun_pos, double amount_jogging) {
   // jogging
-  char x = 48 + sin((double) millis() * JOGGING_SPEED) * 10 * amount_jogging;
-  char y = RENDER_HEIGHT - gun_pos + abs(cos((double) millis() * JOGGING_SPEED)) * 8 * amount_jogging;
+  char x = 48 + sin((double) timer * JOGGING_SPEED) * 10 * amount_jogging;
+  char y = RENDER_HEIGHT - gun_pos + fabs(cos((double) timer * JOGGING_SPEED)) * 8 * amount_jogging;
 
   if (gun_pos > GUN_SHOT_POS - 2) {
     // Gun fire
-    display.drawBitmap(x + 6, y - 11, bmp_fire_bits, BMP_FIRE_WIDTH, BMP_FIRE_HEIGHT, 1);
+    drawBitmap(x + 6, y - 11, bmp_fire_bits, BMP_FIRE_WIDTH, BMP_FIRE_HEIGHT, 1);
   }
 
   // Don't draw over the hud!
-  uint8_t clip_height = max(0, min(y + BMP_GUN_HEIGHT, RENDER_HEIGHT) - y);
+  uint8_t clip_height = fmax(0, fmin(y + BMP_GUN_HEIGHT, RENDER_HEIGHT) - y);
 
   // Draw the gun (black mask + actual sprite).
-  display.drawBitmap(x, y, bmp_gun_mask, BMP_GUN_WIDTH, clip_height, 0);
-  display.drawBitmap(x, y, bmp_gun_bits, BMP_GUN_WIDTH, clip_height, 1);
-}
-
-// Only needed first time
-void renderHud() {
-  drawText(2, 58, F("{}"), 0);        // Health symbol
-  drawText(40, 58, F("[]"), 0);       // Keys symbol
-  updateHud();
-}
-
-// Render values for the HUD
-void updateHud() {
-  display.clearRect(12, 58, 15, 6);
-  display.clearRect(50, 58, 5, 6);
-
-  drawText(12, 58, player.health);
-  drawText(50, 58, player.keys);
+  drawBitmap(x, y, bmp_gun_mask, BMP_GUN_WIDTH, clip_height, 0);
+  drawBitmap(x, y, bmp_gun_bits, BMP_GUN_WIDTH, clip_height, 1);
 }
 
 // Debug stats
 void renderStats() {
-  display.clearRect(58, 58, 70, 6);
-  drawText(114, 58, int(getActualFps()));
-  drawText(82, 58, num_entities);
+  clearRect(58, 58, 70, 6);
+  drawText_legacy(114, 58, (int) (getActualFps()));
+  drawText_legacy(82, 58, num_entities);
   // drawText(94, 58, freeMemory());
 }
 
 // Intro screen
 void loopIntro() {
-  display.drawBitmap(
+  drawBitmap(
     (SCREEN_WIDTH - BMP_LOGO_WIDTH) / 2,
     (SCREEN_HEIGHT - BMP_LOGO_HEIGHT) / 3,
     bmp_logo_bits,
@@ -670,23 +732,21 @@ void loopIntro() {
     BMP_LOGO_HEIGHT,
     1
   );
-
-  delay(1000);
-  drawText(SCREEN_WIDTH / 2 - 25, SCREEN_HEIGHT * .8, F("PRESS FIRE"));
-  display.display();
-
+	display();
+  sb_timer_delay(1000);
+  drawText(SCREEN_WIDTH / 2 - 25, SCREEN_HEIGHT * .8, "PRESS FIRE", 1);
+  display();
   // wait for fire
+  // TODO: Interrupt
   while (!exit_scene) {
-    #ifdef SNES_CONTROLLER
-    getControllerData();
-    #endif
-    if (input_fire()) jumpTo(GAME_PLAY);
-  };
+    if(input_fire()){
+     jumpTo(GAME_PLAY);
+    }
+  }
 }
 
 void loopGamePlay() {
   bool gun_fired = false;
-  bool walkSoundToggle = false;
   uint8_t gun_pos = 0;
   double rot_speed;
   double old_dir_x;
@@ -694,44 +754,41 @@ void loopGamePlay() {
   double view_height;
   double jogging;
   uint8_t fade = GRADIENT_COUNT - 1;
-
+	
   initializeLevel(sto_level_1);
 
   do {
     fps();
-
     // Clear only the 3d view
     memset(display_buf, 0, SCREEN_WIDTH * (RENDER_HEIGHT / 8));
 
-    #ifdef SNES_CONTROLLER
-    getControllerData();
-    #endif
 
     // If the player is alive
     if (player.health > 0) {
       // Player speed
-      if (input_up()) {
-        player.velocity += (MOV_SPEED - player.velocity) * .4;
-        jogging = abs(player.velocity) * MOV_SPEED_INV;
-      } else if (input_down()) {
-        player.velocity += (- MOV_SPEED - player.velocity) * .4;
-        jogging = abs(player.velocity) * MOV_SPEED_INV;
+      uint8_t speed = 0;
+      if (speed = input_up()) {
+        player.velocity += (MOV_SPEED - player.velocity) * .4 * speed/SPEED_MAX;
+        jogging = fabs(player.velocity) * MOV_SPEED_INV;
+      } else if (speed = input_down()) {
+        player.velocity += (- MOV_SPEED - player.velocity) * .4 * speed/SPEED_MAX;
+        jogging = fabs(player.velocity) * MOV_SPEED_INV;
       } else {
         player.velocity *= .5;
-        jogging = abs(player.velocity) * MOV_SPEED_INV;
+        jogging = fabs(player.velocity) * MOV_SPEED_INV;
       }
 
       // Player rotation
-      if (input_right()) {
-        rot_speed = ROT_SPEED * delta;
+      if (speed = input_right()) {
+        rot_speed = ROT_SPEED * delta * speed/SPEED_MAX;
         old_dir_x = player.dir.x;
         player.dir.x = player.dir.x * cos(-rot_speed) - player.dir.y * sin(-rot_speed);
         player.dir.y = old_dir_x * sin(-rot_speed) + player.dir.y * cos(-rot_speed);
         old_plane_x = player.plane.x;
         player.plane.x = player.plane.x * cos(-rot_speed) - player.plane.y * sin(-rot_speed);
         player.plane.y = old_plane_x * sin(-rot_speed) + player.plane.y * cos(-rot_speed);
-      } else if (input_left()) {
-        rot_speed = ROT_SPEED * delta;
+      } else if (speed = input_left()) {
+        rot_speed = ROT_SPEED * delta * speed/SPEED_MAX;
         old_dir_x = player.dir.x;
         player.dir.x = player.dir.x * cos(rot_speed) - player.dir.y * sin(rot_speed);
         player.dir.y = old_dir_x * sin(rot_speed) + player.dir.y * cos(rot_speed);
@@ -740,19 +797,8 @@ void loopGamePlay() {
         player.plane.y = old_plane_x * sin(rot_speed) + player.plane.y * cos(rot_speed);
       }
 
-      view_height = abs(sin((double) millis() * JOGGING_SPEED)) * 6 * jogging;
+      view_height = fabs(sin((double) timer * JOGGING_SPEED)) * 6 * jogging;
 
-      if(view_height > 5.9) {
-        if(sound == false) {
-          if(walkSoundToggle) {
-            playSound(walk1_snd, WALK1_SND_LEN);
-            walkSoundToggle = false;
-          } else {
-            playSound(walk2_snd, WALK2_SND_LEN);
-            walkSoundToggle = true;
-          }
-        }
-      }
       // Update gun
       if (gun_pos > GUN_TARGET_POS) {
         // Right after fire
@@ -778,38 +824,35 @@ void loopGamePlay() {
     }
 
     // Player movement
-    if (abs(player.velocity) > 0.003) {
+    if (fabs(player.velocity) > 0.003) {
       updatePosition(
         sto_level_1,
         &(player.pos),
         player.dir.x * player.velocity * delta,
-        player.dir.y * player.velocity * delta
+        player.dir.y * player.velocity * delta,
+        false
       );
     } else {
       player.velocity = 0;
     }
-
     // Update things
     updateEntities(sto_level_1);
-
     // Render stuff
     renderMap(sto_level_1, view_height);
     renderEntities(view_height);
     renderGun(gun_pos, jogging);
-
     // Fade in effect
     if (fade > 0) {
-      fadeScreen(fade);
+      fadeScreen(fade, 0);
       fade--;
 
       if (fade == 0) {
         // Only draw the hud after fade in effect
-        renderHud();
+        updateHud();
       }
     } else {
       renderStats();
     }
-
     // flash screen
     if (flash_screen > 0) {
       invert_screen = !invert_screen;
@@ -819,21 +862,17 @@ void loopGamePlay() {
     }
 
     // Draw the frame
-    display.invertDisplay(invert_screen);
-    display.display();
+    invertDisplay(invert_screen);
+    display();
 
     // Exit routine
-    #ifdef SNES_CONTROLLER
-    if (input_start()) {
-    #else
     if (input_left() && input_right()) {
-    #endif
       jumpTo(INTRO);
     }
   } while (!exit_scene);
 }
 
-void loop(void) {
+int loop(void) {
   switch (scene) {
     case INTRO: {
         loopIntro();
@@ -848,8 +887,18 @@ void loop(void) {
   // fade out effect
   for (uint8_t i=0; i<GRADIENT_COUNT; i++) {
     fadeScreen(i, 0);
-    display.display();
-    delay(40);
+    display();
+    sb_timer_delay(40);
   }
   exit_scene = false;
+  return 0;
 }
+
+void main(void){
+	setup();
+	while(1){
+		uint8_t ret = loop();
+	}
+}
+
+// end

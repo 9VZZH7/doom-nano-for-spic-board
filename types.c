@@ -3,16 +3,16 @@
 #include "types.h"
 #include "constants.h"
 
-template <class T>
-inline T sq(T value) {
-    return value * value;
+double sq(double val){
+	return val * val;
 }
 
-Coords create_coords(double x, double y) {
-  return { x, y };
+struct Coords create_coords(double x, double y) {
+ struct Coords ret = {x,y};
+  return ret;
 }
 
-uint8_t coords_distance(Coords* a, Coords* b) {
+uint8_t coords_distance(struct Coords* a, struct Coords* b) {
   return sqrt(sq(a->x - b->x) + sq(a->y - b->y)) * DISTANCE_MULTIPLIER;
 }
 
