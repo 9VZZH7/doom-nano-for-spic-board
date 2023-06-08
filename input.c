@@ -22,7 +22,7 @@ void input_setup() {
 uint8_t input_left() {
 	int16_t read = sb_adc_read(POTI);
   if(read < 200 && sb_button_getState(BUTTON1) == RELEASED){
-  	return fmin(200, 325 - read);
+  	return 150; // fmin(200, 325 - read);
   }
   return 0;
 };
@@ -30,7 +30,7 @@ uint8_t input_left() {
 uint8_t input_right() {
 	int16_t read = sb_adc_read(POTI);
   if(read > 824 && sb_button_getState(BUTTON1) == RELEASED){
-  	return fmin(1024, read - 824 + 125);
+  	return 150; // fmin(1024, read - 824 + 125);
   }
   return 0;
 };
@@ -38,7 +38,7 @@ uint8_t input_right() {
 uint8_t input_up() {
 	int16_t read = sb_adc_read(POTI);
   if(read < 200 && sb_button_getState(BUTTON1) == PRESSED){
-  	return fmin(200, 325 - read);
+  	return 150; // fmin(200, 325 - read);
   }
   return 0;
 };
@@ -46,7 +46,7 @@ uint8_t input_up() {
 uint8_t input_down() {
 	int16_t read = sb_adc_read(POTI);
   if(read > 824 && sb_button_getState(BUTTON1) == PRESSED){
-  	return fmin(1024, read - 824 + 125);
+  	return 150; // fmin(1024, read - 824 + 125);
   }
   return 0;
 };
