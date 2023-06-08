@@ -55,78 +55,47 @@ void jumpTo(uint8_t target_scene){
 	exit_scene = true;
 }
 
-
-uint8_t getBlockAtLeg(const uint8_t level[], uint8_t x, uint8_t y) {
-  if (x < 0 || x >= LEVEL_WIDTH || y < 0 || y >= LEVEL_HEIGHT) {
-    return E_FLOOR;
-  }
-
-  // y is read in inverse order
-  return pgm_read_byte(level + (((LEVEL_HEIGHT - 1 - y) * LEVEL_WIDTH + x) / 2))
-         >> (!(x % 2) * 4)       // displace part of wanted bits
-         & 0b1111;               // mask wanted bits
-}
-
 uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y){
-	uint8_t N = 57;
-	uint8_t M = 64;
 	// filter edges
-	if((x <= 0) || (x >= M - 2)){
+	if((x <= 0) || (x >= LEVEL_WIDTH - 2)){
 		return E_WALL;
 	}
-	if((y <= 1) || (y >= N - 1)){
+	if((y <= 0) || (y >= LEVEL_HEIGHT - 2)){
 		return E_WALL;
 	}
 	
 	// shift indizes
 	x = x - 1;
 	y = y - 2;
-	y = 54 - 1 - y;
+	y = LEVEL_HEIGHT - 3 - 1 - y;
 
 	// get position where block is in array
-	uint8_t first_info = pgm_read_byte(sto_level_1_lin + 3 * y);
-	uint8_t second_info = pgm_read_byte(sto_level_1_lin + 3 * y + 1);
-	uint8_t third_info = pgm_read_byte(sto_level_1_lin + 3 * y + 2);
+	uint16_t first_info = pgm_read_byte(level + 3 * y);
+	uint16_t second_info = pgm_read_byte(level + 3 * y + 1);
+	uint16_t third_info = pgm_read_byte(level + 3 * y + 2);
 	uint16_t pos = ((first_info << 8) | second_info) >> 6;
-	uint8_t last_floor = ((first_info << 8) | second_info) & 0b000000000000111111;
-	uint8_t last_wall = third_info;
+	uint16_t last_floor = ((first_info << 8) | second_info) & 0b111111;
+	uint16_t last_wall = third_info;
 	
 	// check whether to check array
-	if(x > M - 3 - last_wall){ 
+	if(x > LEVEL_WIDTH - 3 - last_wall){ 
 		return E_WALL;
 	}
-	if(x > M - 3 - last_wall - last_floor){ 
+	if(x > LEVEL_WIDTH - 3 - last_wall - last_floor){ 
 		return E_FLOOR;
 	}
 
 	// actually read byte
-	uint8_t fields = pgm_read_byte(sto_level_1_lin + (pos + (x >> 1)));
-	if(x & 1){
-		return fields & 0b00001111;
-	}else{
-		return fields >> 4;
-	}
-	return E_FLOOR;
+	uint8_t fields = pgm_read_byte(level + (pos + (x >> 1)));
+	return fields >> (!(x%2) * 4) & 0b1111;
 }
 
 // Finds the player in the map
 void initializeLevel(const uint8_t level[]) {
+  // hardcode player placement for now
+  // TODO: write player to EEPROM
   player = create_player(29, 10);
   return;
-  /*
-  for (uint8_t y = LEVEL_HEIGHT - 1; y >= 0; y--) {
-    for (uint8_t x = 0; x < LEVEL_WIDTH; x++) {
-      uint8_t block = getBlockAt(level, x, y);
-
-      if (block == E_PLAYER) {
-        player = create_player(x, y);
-        return;
-      }
-
-      // TODO: create other static entities
-    }
-  }
-  */
 }
 
 bool isSpawned(UID uid) {
