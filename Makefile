@@ -13,3 +13,7 @@ doom-nano.elf: doom-nano.c entities.c input.c types.c constants.c display_wrap.c
 	$(CC) -Os $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	$(SIZE) $@
 
+installer.elf: installer.c level.h
+	$(CC) -Os $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(SIZE) $@
+
