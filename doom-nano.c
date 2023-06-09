@@ -852,14 +852,16 @@ int loop(void) {
         break;
       }
   }
-
+  /*
   // fade out effect
   for (uint8_t i=0; i<GRADIENT_COUNT; i++) {
     fadeScreen(i, 0);
     display();
     sb_timer_delay(40);
   }
+  */
   exit_scene = false;
+  meltScreen();
   return 0;
 }
 

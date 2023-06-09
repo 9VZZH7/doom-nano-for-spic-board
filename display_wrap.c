@@ -11,7 +11,7 @@
 #include <math.h>
 
 // Reads a char from an F() string
-#define F_char(ifsh, ch)    pgm_read_byte(reinterpret_cast<PGM_P>(ifsh) + ch)
+// #define F_char(ifsh, ch)    pgm_read_byte((PGM_P *)(ifsh) + ch)
 
 //extern variables
 
@@ -104,9 +104,54 @@ double getActualFps() {
 }
 
 // Faster way to render vertical bits
-//TODO: remove
+//TODO: use again
 void drawByte(uint8_t x, uint8_t y, uint8_t b) {
-return;
+  display_buf[(y / 8)*SCREEN_WIDTH + x] = b;
+}
+
+// Helper for melting screen. Picks the relative pixel after melt effect
+// Similar to adafruit::getPixel but removed some checks to make it faster.
+bool getMeltedPixel(uint8_t frame, uint8_t x, uint8_t y) {
+  // uint8_t offset = F_char(MELT_OFFSETS, x % MELT_OFFSETS_SIZE) - 48; // get "random:" numbers from 0 - 9
+  uint8_t offset = MELT_OFFSETS[x % MELT_OFFSETS_SIZE] - 48;
+  int8_t dy = frame < offset ? y : y - MELT_SPEED;
+
+  // Return black
+  if (dy < 0) return false;
+
+  return display_buf[x + (dy / 8) * SCREEN_WIDTH] & (1 << (dy & 7));
+
+}
+
+// Melt the screen DOOM style
+void meltScreen() {
+  uint8_t frames = 0;
+  uint8_t x;
+  int8_t y;
+
+  do {
+    fps();
+
+    // The screen distribution is 8 rows of 128x8 pixels
+    for (y = SCREEN_HEIGHT - 8; y >= 0; y -= 8) {
+      for (x = 0; x < SCREEN_WIDTH;  x++) {
+        drawByte(x, y,
+                 (getMeltedPixel(frames, x, y + 7) << 7)
+                 | (getMeltedPixel(frames, x, y + 6) << 6)
+                 | (getMeltedPixel(frames, x, y + 5) << 5)
+                 | (getMeltedPixel(frames, x, y + 4) << 4)
+                 | (getMeltedPixel(frames, x, y + 3) << 3)
+                 | (getMeltedPixel(frames, x, y + 2) << 2)
+                 | (getMeltedPixel(frames, x, y + 1) << 1)
+                 | getMeltedPixel(frames, x, y)
+                );
+      }
+    }
+
+    display();
+
+    frames++;
+  } while (frames < 30);
 }
 
 bool getGradientPixel(uint8_t x, uint8_t y, uint8_t i) {
