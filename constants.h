@@ -15,7 +15,7 @@
 
 // GFX settings
 
-#define FRAME_TIME          66.666666   // Desired time per frame in ms (66.666666 is ~15 fps)
+#define FRAME_TIME          67          // Desired time per frame in ms (66.666666 is ~15 fps)
 #define RES_DIVIDER         2           // Higher values will result in lower horizontal resolution when rasterize and lower process and memory usage
                                         // Lower will require more process and memory, but looks nicer
 #define Z_RES_DIVIDER       2           // Zbuffer resolution divider. We sacrifice resolution to save memory

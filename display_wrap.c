@@ -2,13 +2,14 @@
 #include "display.h"
 #include "led.h"
 #include "7seg.h"
-#include <timer.h>
+// #include <timer.h>
 #include "constants.h"
 #include "sprites.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
+#include <avr/interrupt.h>
 
 // Reads a char from an F() string
 // #define F_char(ifsh, ch)    pgm_read_byte((PGM_P *)(ifsh) + ch)
@@ -31,16 +32,29 @@ const static uint8_t PROGMEM bit_mask[8] = { 128, 64, 32, 16, 8, 4, 2, 1 };
 
 volatile double delta = 1;
 volatile uint32_t lastFrameTime = 0;
+static volatile uint32_t currentFrameTime = 0;
+
+ISR(TIMER0_OVF_vect){
+	currentFrameTime++;
+}
+
+// display buffer
 uint8_t display_buf[1024]; //8192
 
 // We don't handle more than MAX_RENDER_DEPTH depth, so we can safety store
 // z values in a byte with 1 decimal and save some memory,
 uint8_t zbuffer[64];
 
+
 void setupDisplay(void) {
   // Setup display
   sb_display_enable();
   sb_display_fillScreen(NULL);
+
+  TCCR0B &= ~(1<<CS02);
+  // TCCR0B &= ~(1<<CS01);
+  TCCR0B |= (1<<CS01) | (1<<CS00);
+  TIMSK0 |= (1<<TOIE0);
 }
 
 void display(void){
@@ -96,7 +110,16 @@ void drawPixelDisplay(uint8_t x, uint8_t y, bool color){
 // Calculates also delta to keep movement consistent in lower framerates
 //TODO: real ms measure
 void fps(void){
-  //sb_timer_delay(20);
+	cli();
+	uint32_t frameTime = currentFrameTime;
+	sei();
+	while(frameTime - lastFrameTime < FRAME_TIME){
+		cli();
+		frameTime = currentFrameTime;
+		sei();
+	}
+	delta = (double)(frameTime - lastFrameTime)/FRAME_TIME;
+	lastFrameTime = frameTime;
 }
 
 double getActualFps() {
@@ -104,7 +127,6 @@ double getActualFps() {
 }
 
 // Faster way to render vertical bits
-//TODO: use again
 void drawByte(uint8_t x, uint8_t y, uint8_t b) {
   display_buf[(y / 8)*SCREEN_WIDTH + x] = b;
 }
@@ -175,6 +197,7 @@ void fadeScreen(uint8_t intensity, bool color) { // color = 0
   }
 }
 
+
 // Faster drawPixel than display.drawPixel.
 // Avoids some checks to make it faster.
 void drawPixel(int8_t x, int8_t y, bool color, bool raycasterViewport) { // ray... = false
@@ -201,17 +224,28 @@ void drawVLine(uint8_t x, int8_t start_y, int8_t end_y, uint8_t intensity) {
   int8_t higher_y = fmin(fmax(start_y, end_y), RENDER_HEIGHT - 1);
   uint8_t c;
 
+  uint8_t bp;
+  uint8_t b;
+  for (c = 0; c < RES_DIVIDER; c++) {
+    y = lower_y;
+    b = 0;
+    while (y <= higher_y) {
+      bp = y % 8;
+      b = b | getGradientPixel(x + c, y, intensity) << bp;
 
-  y = lower_y;
-  while (y <= higher_y) {
-    for (c = 0; c < RES_DIVIDER; c++) {
-      // bypass black pixels
-      if (getGradientPixel(x + c, y, intensity)) {
-        drawPixel(x + c, y, 1, true);
+      if (bp == 7) {
+        // write the whole byte
+        drawByte(x + c, y, b);
+        b = 0;
       }
+
+      y++;
     }
 
-    y++;
+    // draw last byte
+    if (bp != 7) {
+      drawByte(x + c, y - 1, b);
+    }
   }
 }
 

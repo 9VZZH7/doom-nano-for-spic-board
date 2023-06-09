@@ -1,60 +1,73 @@
 #include <stdbool.h>
 
 #include "adc.h"
-#include "button.h"
+// #include "button.h"
 #include <avr/interrupt.h>
 #include <math.h>
 
 #include "input.h"
 #include "constants.h"
 
-volatile bool has_fired = false;
+#define RELEASED 0
+#define PRESSED 1
 
-static void fire_fun(BUTTON btn, BUTTONEVENT event){
-	has_fired = true;
+volatile uint8_t has_fired = 0;
+
+ISR(INT0_vect){
+	has_fired = 1;
 }
 
-void input_setup() {
-  sei();
-  sb_button_registerCallback(BUTTON0, ONPRESS, &fire_fun);
+void input_setup(void) {
+	DDRD &= ~(1<<PD2);
+	PORTD |= (1<<PD2);
+	EICRA &= ~(1<<ISC00);
+	EICRA |= (1<<ISC01);
+	EIMSK |= (1<<INT0);
+
+	DDRD &= ~(1<<PD3);
+	PORTD |= (1<<PD3);
 }
 
-uint8_t input_left() {
+static uint8_t getButtonState(void){
+	return (PIND & (1<<PD3)) == 0;
+}
+
+uint8_t input_left(void) {
 	int16_t read = sb_adc_read(POTI);
-  if(read < 200 && sb_button_getState(BUTTON1) == RELEASED){
-  	return 150; // fmin(200, 325 - read);
+  if(read < 200 && getButtonState() == RELEASED){
+  	return 50; // fmin(200, 325 - read);
   }
   return 0;
 };
 
-uint8_t input_right() {
+uint8_t input_right(void) {
 	int16_t read = sb_adc_read(POTI);
-  if(read > 824 && sb_button_getState(BUTTON1) == RELEASED){
-  	return 150; // fmin(1024, read - 824 + 125);
+  if(read > 824 && getButtonState() == RELEASED){
+  	return 50; // fmin(1024, read - 824 + 125);
   }
   return 0;
 };
 
-uint8_t input_up() {
+uint8_t input_up(void) {
 	int16_t read = sb_adc_read(POTI);
-  if(read < 200 && sb_button_getState(BUTTON1) == PRESSED){
-  	return 150; // fmin(200, 325 - read);
+  if(read < 200 && getButtonState() == PRESSED){
+  	return 50; // fmin(200, 325 - read);
   }
   return 0;
 };
 
-uint8_t input_down() {
+uint8_t input_down(void) {
 	int16_t read = sb_adc_read(POTI);
-  if(read > 824 && sb_button_getState(BUTTON1) == PRESSED){
-  	return 150; // fmin(1024, read - 824 + 125);
+  if(read > 824 && getButtonState() == PRESSED){
+  	return 50; // fmin(1024, read - 824 + 125);
   }
   return 0;
 };
 
-bool input_fire() {
+uint8_t input_fire(void) {
   cli();
-  bool fire = has_fired;
-  has_fired = false;
+  uint8_t fire = has_fired;
+  has_fired = 0;
   sei();
   return fire;
 };

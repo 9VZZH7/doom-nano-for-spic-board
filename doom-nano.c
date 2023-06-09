@@ -48,6 +48,7 @@ volatile uint8_t num_static_entities = 0;
 void setup(void){
 	setupDisplay();
 	input_setup();
+	sei();
 }
 
 void jumpTo(uint8_t target_scene){
@@ -66,7 +67,7 @@ uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y){
 	
 	// shift indizes
 	x = x - 1;
-	y = y - 2;
+	y = y - 1;
 	y = LEVEL_HEIGHT - 3 - 1 - y;
 
 	// get position where block is in array
@@ -852,14 +853,6 @@ int loop(void) {
         break;
       }
   }
-  /*
-  // fade out effect
-  for (uint8_t i=0; i<GRADIENT_COUNT; i++) {
-    fadeScreen(i, 0);
-    display();
-    sb_timer_delay(40);
-  }
-  */
   exit_scene = false;
   meltScreen();
   return 0;
