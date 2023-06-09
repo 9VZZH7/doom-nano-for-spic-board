@@ -1,11 +1,11 @@
 #include <avr/interrupt.h>
-#include <util/delay.h>
+#include <avr/eeprom.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "level.h"
 #include "sprites.h"
 #include "input.h"
 #include "entities.h"
@@ -53,7 +53,7 @@ static void jumpTo(uint8_t target_scene){
 	exit_scene = true;
 }
 
-static uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y){
+static uint8_t getBlockAt(uint8_t x, uint8_t y){
 	// filter edges
 	if((x <= 0) || (x >= LEVEL_WIDTH - 2)){
 		return E_WALL;
@@ -68,9 +68,12 @@ static uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y){
 	y = LEVEL_HEIGHT - 3 - 1 - y;
 
 	// get position where block is in array
-	uint16_t first_info = pgm_read_byte(level + 3 * y);
-	uint16_t second_info = pgm_read_byte(level + 3 * y + 1);
-	uint16_t third_info = pgm_read_byte(level + 3 * y + 2);
+	eeprom_busy_wait();
+	uint16_t first_info = eeprom_read_byte(3 * y); // pgm_read_byte(level + 3 * y);
+	eeprom_busy_wait();
+	uint16_t second_info = eeprom_read_byte(3 * y + 1); // pgm_read_byte(level + 3 * y + 1);
+	eeprom_busy_wait();
+	uint16_t third_info = eeprom_read_byte(3 * y + 2); // pgm_read_byte(level + 3 * y + 2);
 	uint16_t pos = ((first_info << 8) | second_info) >> 6;
 	uint16_t last_floor = ((first_info << 8) | second_info) & 0b111111;
 	uint16_t last_wall = third_info;
@@ -84,12 +87,13 @@ static uint8_t getBlockAt(const uint8_t level[], uint8_t x, uint8_t y){
 	}
 
 	// actually read byte
-	uint8_t fields = pgm_read_byte(level + (pos + (x >> 1)));
+	eeprom_busy_wait();
+	uint8_t fields = eeprom_read_byte(pos + (x>>1)); // pgm_read_byte(level + (pos + (x >> 1)));
 	return fields >> (!(x%2) * 4) & 0b1111;
 }
 
 // Finds the player in the map
-static void initializeLevel(const uint8_t level[]) {
+static void initializeLevel(void) {
 	// hardcode player placement for now
 	// TODO: write player to EEPROM
 	player = create_player(29, 10);
@@ -198,11 +202,11 @@ static void removeStaticEntity(UID uid) {
 	}
 }
 
-static UID detectCollision(const uint8_t level[], struct Coords *pos, double relative_x, double relative_y, bool only_walls) { // only_walls = false
+static UID detectCollision(struct Coords *pos, double relative_x, double relative_y, bool only_walls) { // only_walls = false
 	// Wall collision
 	uint8_t round_x = (int)(pos->x + relative_x);
 	uint8_t round_y = (int)(pos->y + relative_y);
-	uint8_t block = getBlockAt(level, round_x, round_y);
+	uint8_t block = getBlockAt(round_x, round_y);
 
 	if (block == E_WALL) {
 		return create_uid(block, round_x, round_y);
@@ -274,9 +278,9 @@ static void fire(void) {
 }
 
 // Update coords if possible. Return the collided uid, if any
-static UID updatePosition(const uint8_t level[], struct Coords *pos, double relative_x, double relative_y, bool only_walls) { // only_walls = false
-	UID collide_x = detectCollision(level, pos, relative_x, 0, only_walls);
-	UID collide_y = detectCollision(level, pos, 0, relative_y, only_walls);
+static UID updatePosition(struct Coords *pos, double relative_x, double relative_y, bool only_walls) { // only_walls = false
+	UID collide_x = detectCollision(pos, relative_x, 0, only_walls);
+	UID collide_y = detectCollision(pos, 0, relative_y, only_walls);
 
 	if (!collide_x) pos->x += relative_x;
 	if (!collide_y) pos->y += relative_y;
@@ -290,7 +294,7 @@ static void updateHud(void) {
 	drawKeys(player.keys);
 }
 
-static void updateEntities(const uint8_t level[]) {
+static void updateEntities(void) {
 	uint8_t i = 0;
 	while (i < num_entities) {
 		// update distance
@@ -350,7 +354,6 @@ static void updateEntities(const uint8_t level[]) {
 							} else {
 								// move towards to the player.
 								updatePosition(
-									level,
 									&(entity[i].pos),
 									sign(player.pos.x, entity[i].pos.x) * ENEMY_SPEED * delta,
 									sign(player.pos.y, entity[i].pos.y) * ENEMY_SPEED * delta,
@@ -390,7 +393,6 @@ static void updateEntities(const uint8_t level[]) {
 					// Move. Only collide with walls.
 					// Note: using health to store the angle of the movement
 					UID collided = updatePosition(
-						level,
 						&(entity[i].pos),
 						cos((double) entity[i].health / FIREBALL_ANGLES * PI) * FIREBALL_SPEED,
 						sin((double) entity[i].health / FIREBALL_ANGLES * PI) * FIREBALL_SPEED,
@@ -433,7 +435,7 @@ static void updateEntities(const uint8_t level[]) {
 }
 
 // The map raycaster. Based on https://lodev.org/cgtutor/raycasting.html
-static void renderMap(const uint8_t level[], double view_height) {
+static void renderMap(double view_height) {
 	UID last_uid;
 
 	for (uint8_t x = 0; x < SCREEN_WIDTH; x += RES_DIVIDER) {
@@ -482,7 +484,7 @@ static void renderMap(const uint8_t level[], double view_height) {
 				side = 1;
 			}
 
-			uint8_t block = getBlockAt(level, map_x, map_y);
+			uint8_t block = getBlockAt(map_x, map_y);
 
 			if (block == E_WALL) {
 				hit = 1;
@@ -531,7 +533,7 @@ static void renderMap(const uint8_t level[], double view_height) {
 }
 
 // Sort entities from far to close
-static uint8_t sortEntities() {
+static uint8_t sortEntities(void) {
 	uint8_t gap = num_entities;
 	bool swapped = false;
 	while (gap > 1 || swapped) {
@@ -717,7 +719,7 @@ static void loopGamePlay(void) {
 	double jogging;
 	uint8_t fade = GRADIENT_COUNT - 1;
 
-	initializeLevel(sto_level_1);
+	initializeLevel();
 
 	do {
 		fps();
@@ -788,7 +790,6 @@ static void loopGamePlay(void) {
 		// Player movement
 		if (fabs(player.velocity) > 0.003) {
 			updatePosition(
-				sto_level_1,
 				&(player.pos),
 				player.dir.x * player.velocity * delta,
 				player.dir.y * player.velocity * delta,
@@ -798,9 +799,9 @@ static void loopGamePlay(void) {
 			player.velocity = 0;
 		}
 		// Update things
-		updateEntities(sto_level_1);
+		updateEntities();
 		// Render stuff
-		renderMap(sto_level_1, view_height);
+		renderMap(view_height);
 		renderEntities(view_height);
 		renderGun(gun_pos, jogging);
 		// Fade in effect
