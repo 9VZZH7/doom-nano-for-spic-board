@@ -3,16 +3,6 @@
 
 #define PI 3.1415926
 
-// Key pinout
-//TODO: input
-#define USE_INPUT_PULLUP
-#define K_LEFT              6
-#define K_RIGHT             7
-#define K_UP                8
-#define K_DOWN              3
-#define K_FIRE              10
-
-
 // GFX settings
 
 #define FRAME_TIME          67          // Desired time per frame in ms (66.666666 is ~15 fps)

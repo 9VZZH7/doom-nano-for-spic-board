@@ -1,12 +1,7 @@
-// TODO: finished
-
 #ifndef _entities_h
 #define _entities_h
 
 #include "types.h"
-
-// Shortcuts
-//#define create_player(x, y)   create_player((double) x + 0.5, (double) y + 0.5,create_coords(1, 0),create_coords(0, -0.66),0,100)
 
 #define create_enemy(x, y)            create_entity(E_ENEMY, x, y, S_STAND, 100)
 #define create_medikit(x, y)          create_entity(E_MEDIKIT, x, y, S_STAND, 0)
@@ -54,4 +49,3 @@ struct StaticEntity create_static_entity(UID uid, uint8_t x,  uint8_t y, bool ac
 struct Player create_player(double x, double y); //, struct Coords dir, struct Coords plane, double velocity, uint8_t health);
 
 #endif
-
