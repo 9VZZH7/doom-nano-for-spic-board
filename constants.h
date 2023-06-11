@@ -45,6 +45,7 @@
 
 #define MAX_ENTITIES          10          // Max num of active entities
 #define MAX_STATIC_ENTITIES   28          // Max num of entities in sleep mode
+#define MAX_OPEN_DOORS	      20   	  // Max number of doors
 
 #define MAX_ENTITY_DISTANCE   200         // * DISTANCE_MULTIPLIER
 #define MAX_ENEMY_VIEW        80          // * DISTANCE_MULTIPLIER

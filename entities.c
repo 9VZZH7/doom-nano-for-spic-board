@@ -21,3 +21,9 @@ struct Player create_player(double x, double y){ //, struct Coords dir, struct C
 	struct Player play = {create_coords(x + 0.5, y + 0.5), create_coords(1, 0), create_coords(0, -0.66), 0, 100, 0};
 	return play;
 }
+
+struct OpenDoor create_open_door(UID uid, uint8_t x, uint8_t y){
+	struct OpenDoor door = {uid, x, y};
+	return door;
+}
+

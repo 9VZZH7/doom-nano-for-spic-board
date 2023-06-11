@@ -39,8 +39,10 @@ static uint32_t timer;
 static volatile struct Player player;
 static struct Entity entity[MAX_ENTITIES];
 static struct StaticEntity static_entity[MAX_STATIC_ENTITIES];
+static struct OpenDoor open_doors[MAX_OPEN_DOORS];
 static volatile uint8_t num_entities = 0;
 static volatile uint8_t num_static_entities = 0;
+static volatile uint8_t num_open_doors = 0;
 
 static void setup(void){
 	setupDisplay();
@@ -107,6 +109,13 @@ static bool isSpawned(UID uid) {
 		}
 	}
 
+	return false;
+}
+
+static bool isOpened(UID uid){
+	for(uint8_t i = 0; i < num_open_doors; i++){
+		if(open_doors[i].uid == uid) return true;
+	}
 	return false;
 }
 
@@ -202,6 +211,12 @@ static void removeStaticEntity(UID uid) {
 	}
 }
 
+// Render values for the HUD
+static void updateHud(void) {
+	drawHealth(player.health);
+	drawKeys(player.keys);
+}
+
 static UID detectCollision(struct Coords *pos, double relative_x, double relative_y, bool only_walls) { // only_walls = false
 	// Wall collision
 	uint8_t round_x = (int)(pos->x + relative_x);
@@ -214,6 +229,28 @@ static UID detectCollision(struct Coords *pos, double relative_x, double relativ
 
 	if (only_walls) {
 		return UID_null;
+	}
+
+	// Door collision
+	if(block == E_DOOR){
+		if(!isOpened(create_uid(block, round_x, round_y))){
+			if(num_open_doors < MAX_OPEN_DOORS){
+				open_doors[num_open_doors++] = create_open_door(create_uid(block, round_x, round_y), round_x, round_y);
+			}
+		}
+	}
+
+	if(block == E_LOCKEDDOOR){
+		if(!isOpened(create_uid(block, round_x, round_y))){
+			if(num_open_doors < MAX_OPEN_DOORS && player.keys){
+				player.keys--;
+				updateHud();
+				open_doors[num_open_doors++] = create_open_door(create_uid(block, round_x, round_y), round_x, round_y);
+			}
+			else{
+				return create_uid(block, round_x, round_y);
+			}
+		}
 	}
 
 	// Entity collision
@@ -286,12 +323,6 @@ static UID updatePosition(struct Coords *pos, double relative_x, double relative
 	if (!collide_y) pos->y += relative_y;
 
 	return collide_x || collide_y || UID_null;
-}
-
-// Render values for the HUD
-static void updateHud(void) {
-	drawHealth(player.health);
-	drawKeys(player.keys);
 }
 
 static void updateEntities(void) {

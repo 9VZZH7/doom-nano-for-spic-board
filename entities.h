@@ -29,23 +29,30 @@ struct Player {
 };
 
 struct Entity {
-  UID uid;
-  struct Coords pos;
-  uint8_t state;
-  uint8_t health;     // angle for fireballs
-  uint8_t distance;
-  uint8_t timer;
+	UID uid;
+	struct Coords pos;
+	uint8_t state;
+	uint8_t health;     // angle for fireballs
+	uint8_t distance;
+	uint8_t timer;
 };
 
 struct StaticEntity  { 
-  UID uid;
-  uint8_t x;
-  uint8_t y;
-  bool active;
+	UID uid;
+	uint8_t x;
+	uint8_t y;
+	bool active;
+};
+
+struct OpenDoor{
+	UID uid;
+	uint8_t x;
+	uint8_t y;
 };
 
 struct Entity create_entity(uint8_t type, uint8_t x,  uint8_t y, uint8_t initialState, uint8_t initialHealth);
 struct StaticEntity create_static_entity(UID uid, uint8_t x,  uint8_t y, bool active);
 struct Player create_player(double x, double y); //, struct Coords dir, struct Coords plane, double velocity, uint8_t health);
+struct OpenDoor create_open_door(UID uid, uint8_t x, uint8_t y);
 
 #endif
