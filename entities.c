@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "entities.h"
 #include "types.h"
@@ -23,7 +24,7 @@ struct Player create_player(double x, double y){ //, struct Coords dir, struct C
 }
 
 struct OpenDoor create_open_door(UID uid, uint8_t x, uint8_t y){
-	struct OpenDoor door = {uid, x, y};
+	struct OpenDoor door = {uid, create_coords(x, y), x, y};
 	return door;
 }
 

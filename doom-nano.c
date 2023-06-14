@@ -40,9 +40,11 @@ static volatile struct Player player;
 static struct Entity entity[MAX_ENTITIES];
 static struct StaticEntity static_entity[MAX_STATIC_ENTITIES];
 static struct OpenDoor open_doors[MAX_OPEN_DOORS];
+static struct OpenDoor doors[1]; // TODO: correct size and type
 static volatile uint8_t num_entities = 0;
 static volatile uint8_t num_static_entities = 0;
 static volatile uint8_t num_open_doors = 0;
+static volatile uint8_t num_doors = 0;
 
 static void check_eeprom(){
 	eeprom_busy_wait();
@@ -595,6 +597,48 @@ static uint8_t sortEntities(void) {
 		}
 	}
 	return 0;
+}
+
+static uint8_t sortDoors(void){
+	return 0;
+}
+
+static void renderDoors(double view_height) {
+	sortDoors();
+
+	for (uint8_t i = 0; i < num_doors; i++) {
+		/*
+		 * Needed later
+		if (doors[i].state == S_OPEN){
+		}
+		*/
+
+		struct Coords transform;
+		translateIntoView(&(doors[i].pos), &transform);
+
+		// don´t render if behind the player or too far away
+		if (transform.y <= 0.1 || transform.y > MAX_SPRITE_DEPTH) {
+			continue;
+		}
+
+		int16_t sprite_screen_x = HALF_WIDTH * (1.0 + transform.x / transform.y);
+		int8_t sprite_screen_y = RENDER_HEIGHT / 2 + view_height / transform.y;
+		uint8_t type = uid_get_type(doors[i].uid);
+
+		// don´t try to render if outside of screen
+		// doing this pre-shortcut due int16 -> int8 conversion makes out-of-screen
+		// values fit into the screen space
+		if (sprite_screen_x < - HALF_WIDTH || sprite_screen_x > SCREEN_WIDTH + HALF_WIDTH) {
+			continue;
+		}
+
+		switch(type){
+			case E_DOOR:
+				break;
+			case E_LOCKEDDOOR:
+				break;
+		}
+	}
 }
 
 static void renderEntities(double view_height) {

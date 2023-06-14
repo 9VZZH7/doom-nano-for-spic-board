@@ -46,6 +46,7 @@ struct StaticEntity  {
 
 struct OpenDoor{
 	UID uid;
+	struct Coords pos;
 	uint8_t x;
 	uint8_t y;
 };
