@@ -33,32 +33,32 @@ static uint8_t getButtonState(void){
 
 uint8_t input_left(void) {
 	int16_t read = sb_adc_read(POTI);
-  	if(read < 200 && getButtonState() == RELEASED){
-  		return 50; // fmin(200, 325 - read);
+  	if(read < 350 && getButtonState() == RELEASED){
+  		return (350 - read) / 7;
   	}
  	return 0;
 }
 
 uint8_t input_right(void) {
 	int16_t read = sb_adc_read(POTI);
-	if(read > 824 && getButtonState() == RELEASED){
-		return 50; // fmin(1024, read - 824 + 125);
+	if(read > 674 && getButtonState() == RELEASED){
+		return (read - 674) / 7;
 	}
 	return 0;
 }
 
 uint8_t input_up(void) {
 	int16_t read = sb_adc_read(POTI);
-	if(read < 200 && getButtonState() == PRESSED){
-		return 50; // fmin(200, 325 - read);
+	if(read < 350 && getButtonState() == PRESSED){
+  		return (350 - read) / 7;
 	}
 	return 0;
 }
 
 uint8_t input_down(void) {
 	int16_t read = sb_adc_read(POTI);
-	if(read > 824 && getButtonState() == PRESSED){
-		return 50; // fmin(1024, read - 824 + 125);
+	if(read > 674 && getButtonState() == PRESSED){
+		return (read - 674) / 7;
 	}
 	return 0;
 }
