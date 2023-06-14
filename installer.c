@@ -17,8 +17,6 @@ static void start_installation(void){
 	for(uint16_t i = 0; i < 1024; i++){
 		eeprom_busy_wait();
 		eeprom_update_byte(i, *(sto_level_1 + i));
-		// eeprom_busy_wait();
-		// sb_7seg_showHexNumber(eeprom_read_byte(i));
 	}
 	return;
 }

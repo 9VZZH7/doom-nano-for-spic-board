@@ -52,6 +52,16 @@ void setupDisplay(void) {
 	TIMSK0 |= (1<<TOIE0);
 }
 
+void display_installer_error(void){
+	sei();
+	char * text = "NO INSTALLATION FOUND";
+	drawText(SCREEN_WIDTH / 2 - 34, SCREEN_HEIGHT * .4, "NO INSTALLATION", 1);
+	drawText(SCREEN_WIDTH / 2 - 40, SCREEN_HEIGHT * .6, "FOUND OR UPDATE REQ.", 1);
+	drawText(SCREEN_WIDTH / 2 - 30, SCREEN_HEIGHT * .8, "USE INSTALLER", 1);
+	display();
+	while(1);
+}
+
 void display(void){
 	sb_display_fillScreen(display_buf);
 }

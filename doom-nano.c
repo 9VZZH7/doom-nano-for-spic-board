@@ -44,9 +44,17 @@ static volatile uint8_t num_entities = 0;
 static volatile uint8_t num_static_entities = 0;
 static volatile uint8_t num_open_doors = 0;
 
+static void check_eeprom(){
+	eeprom_busy_wait();
+	if(eeprom_read_byte(0) == 0xFF){
+		display_installer_error();
+	}
+}
+
 static void setup(void){
 	setupDisplay();
 	input_setup();
+	check_eeprom();
 	sei();
 }
 
@@ -96,9 +104,14 @@ static uint8_t getBlockAt(uint8_t x, uint8_t y){
 
 // Finds the player in the map
 static void initializeLevel(void) {
-	// hardcode player placement for now
-	// TODO: write player to EEPROM
-	player = create_player(29, 10);
+	eeprom_busy_wait();
+	uint8_t x = eeprom_read_byte(1022);
+	eeprom_busy_wait();
+	uint8_t y = eeprom_read_byte(1023);
+	if(x >= LEVEL_WIDTH || x == 0 || y == 0 || y >= LEVEL_HEIGHT){
+		display_installer_error();	
+	}
+	player = create_player(x, y);
 	return;
 }
 
