@@ -23,8 +23,18 @@ struct Player create_player(double x, double y){ //, struct Coords dir, struct C
 	return play;
 }
 
-struct OpenDoor create_open_door(UID uid, uint8_t x, uint8_t y){
-	struct OpenDoor door = {uid, create_coords(x, y), x, y};
-	return door;
+struct Entity create_locked_door(uint8_t x, uint8_t y){
+	UID uid = create_uid(E_LOCKEDDOOR, x, y);
+	struct Coords pos = create_coords((double) x + .5, (double) y + .5);
+	struct Entity new_entity = { uid, pos, S_CLOSE, 0, 0, 0 };
+	return new_entity;
 }
+
+struct Entity create_door(uint8_t x, uint8_t y){
+	UID uid = create_uid(E_DOOR, x, y);
+	struct Coords pos = create_coords((double) x + .5, (double) y + .5);
+	struct Entity new_entity = { uid, pos, S_CLOSE, 0, 0, 0 };
+	return new_entity;
+}
+
 

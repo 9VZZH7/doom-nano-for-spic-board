@@ -39,12 +39,8 @@ static uint32_t timer;
 static volatile struct Player player;
 static struct Entity entity[MAX_ENTITIES];
 static struct StaticEntity static_entity[MAX_STATIC_ENTITIES];
-static struct OpenDoor open_doors[MAX_OPEN_DOORS];
-static struct OpenDoor doors[1]; // TODO: correct size and type
 static volatile uint8_t num_entities = 0;
 static volatile uint8_t num_static_entities = 0;
-static volatile uint8_t num_open_doors = 0;
-static volatile uint8_t num_doors = 0;
 
 static void check_eeprom(){
 	eeprom_busy_wait();
@@ -81,11 +77,11 @@ static uint8_t getBlockAt(uint8_t x, uint8_t y){
 
 	// get position where block is in array
 	eeprom_busy_wait();
-	uint16_t first_info = eeprom_read_byte(3 * y); // pgm_read_byte(level + 3 * y);
+	uint16_t first_info = eeprom_read_byte(3 * y);
 	eeprom_busy_wait();
-	uint16_t second_info = eeprom_read_byte(3 * y + 1); // pgm_read_byte(level + 3 * y + 1);
+	uint16_t second_info = eeprom_read_byte(3 * y + 1);
 	eeprom_busy_wait();
-	uint16_t third_info = eeprom_read_byte(3 * y + 2); // pgm_read_byte(level + 3 * y + 2);
+	uint16_t third_info = eeprom_read_byte(3 * y + 2); 
 	uint16_t pos = ((first_info << 8) | second_info) >> 6;
 	uint16_t last_floor = ((first_info << 8) | second_info) & 0b111111;
 	uint16_t last_wall = third_info;
@@ -100,7 +96,7 @@ static uint8_t getBlockAt(uint8_t x, uint8_t y){
 
 	// actually read byte
 	eeprom_busy_wait();
-	uint8_t fields = eeprom_read_byte(pos + (x>>1)); // pgm_read_byte(level + (pos + (x >> 1)));
+	uint8_t fields = eeprom_read_byte(pos + (x>>1)); 
 	return fields >> (!(x%2) * 4) & 0b1111;
 }
 
@@ -128,10 +124,22 @@ static bool isSpawned(UID uid) {
 }
 
 static bool isOpened(UID uid){
-	for(uint8_t i = 0; i < num_open_doors; i++){
-		if(open_doors[i].uid == uid) return true;
+	for(uint8_t i = 0; i < num_entities; i++){
+		if(entity[i].uid == uid && entity[i].state == S_OPEN) return true;
 	}
 	return false;
+}
+
+static void open_door(UID uid){
+	uint8_t i = 0;
+	while(i < num_entities){
+		if(entity[i].uid == uid){
+			entity[i].state = S_OPEN;
+			return;
+		}
+		i++;
+	}
+	sb_7seg_showNumber(99);
 }
 
 static bool isStatic(UID uid) {
@@ -164,6 +172,14 @@ static void spawnEntity(uint8_t type, uint8_t x, uint8_t y) {
 
 		case E_MEDIKIT:
 			entity[num_entities] = create_medikit(x, y);
+			num_entities++;
+			break;
+		case E_DOOR:
+			entity[num_entities] = create_door(x, y);
+			num_entities++;
+			break;
+		case E_LOCKEDDOOR:
+			entity[num_entities] = create_locked_door(x, y);
 			num_entities++;
 			break;
 	}
@@ -248,19 +264,15 @@ static UID detectCollision(struct Coords *pos, double relative_x, double relativ
 
 	// Door collision
 	if(block == E_DOOR){
-		if(!isOpened(create_uid(block, round_x, round_y))){
-			if(num_open_doors < MAX_OPEN_DOORS){
-				open_doors[num_open_doors++] = create_open_door(create_uid(block, round_x, round_y), round_x, round_y);
-			}
-		}
+		open_door(create_uid(block, round_x, round_y));
 	}
 
 	if(block == E_LOCKEDDOOR){
 		if(!isOpened(create_uid(block, round_x, round_y))){
-			if(num_open_doors < MAX_OPEN_DOORS && player.keys){
+			if(player.keys){
 				player.keys--;
 				updateHud();
-				open_doors[num_open_doors++] = create_open_door(create_uid(block, round_x, round_y), round_x, round_y);
+				open_door(create_uid(block, round_x, round_y));
 			}
 			else{
 				return create_uid(block, round_x, round_y);
@@ -278,7 +290,7 @@ static UID detectCollision(struct Coords *pos, double relative_x, double relativ
 		uint8_t type = uid_get_type(entity[i].uid);
 
 		// Only ALIVE enemy collision
-		if (type != E_ENEMY || entity[i].state == S_DEAD || entity[i].state == S_HIDDEN) {
+		if (type != E_ENEMY || entity[i].state == S_DEAD || entity[i].state == S_HIDDEN || entity[i].state == S_OPEN) {
 			continue;
 		}
 
@@ -351,7 +363,7 @@ static void updateEntities(void) {
 		if (entity[i].timer > 0) entity[i].timer--;
 
 		// too far away. put it in doze mode
-		if (entity[i].distance > MAX_ENTITY_DISTANCE) {
+		if (entity[i].distance > MAX_ENTITY_DISTANCE && (uid_get_type(entity[i].uid) != E_DOOR && uid_get_type(entity[i].uid) != E_LOCKEDDOOR)) {
 			removeEntity(entity[i].uid, false);
 			// don't increase 'i', since current one has been removed
 			continue;
@@ -547,6 +559,14 @@ static void renderMap(double view_height) {
 							last_uid = uid;
 						}
 					}
+				}else if(block == E_DOOR || block == E_LOCKEDDOOR){
+					if (coords_distance(&(player.pos), &map_coords) < MAX_ENTITY_DISTANCE) {
+						UID uid = create_uid(block, map_x, map_y);
+						if (last_uid != uid && !isSpawned(uid)) {
+							spawnEntity(block, map_x, map_y);
+							last_uid = uid;
+						}
+					}
 				}
 			}
 
@@ -599,53 +619,11 @@ static uint8_t sortEntities(void) {
 	return 0;
 }
 
-static uint8_t sortDoors(void){
-	return 0;
-}
-
-static void renderDoors(double view_height) {
-	sortDoors();
-
-	for (uint8_t i = 0; i < num_doors; i++) {
-		/*
-		 * Needed later
-		if (doors[i].state == S_OPEN){
-		}
-		*/
-
-		struct Coords transform;
-		translateIntoView(&(doors[i].pos), &transform);
-
-		// don´t render if behind the player or too far away
-		if (transform.y <= 0.1 || transform.y > MAX_SPRITE_DEPTH) {
-			continue;
-		}
-
-		int16_t sprite_screen_x = HALF_WIDTH * (1.0 + transform.x / transform.y);
-		int8_t sprite_screen_y = RENDER_HEIGHT / 2 + view_height / transform.y;
-		uint8_t type = uid_get_type(doors[i].uid);
-
-		// don´t try to render if outside of screen
-		// doing this pre-shortcut due int16 -> int8 conversion makes out-of-screen
-		// values fit into the screen space
-		if (sprite_screen_x < - HALF_WIDTH || sprite_screen_x > SCREEN_WIDTH + HALF_WIDTH) {
-			continue;
-		}
-
-		switch(type){
-			case E_DOOR:
-				break;
-			case E_LOCKEDDOOR:
-				break;
-		}
-	}
-}
-
 static void renderEntities(double view_height) {
 	sortEntities();
 
 	for (uint8_t i = 0; i < num_entities; i++) {
-		if (entity[i].state == S_HIDDEN){
+		if (entity[i].state == S_HIDDEN || entity[i].state == S_OPEN){
 			continue;
 		}
 
@@ -745,6 +723,20 @@ static void renderEntities(double view_height) {
 					);
 				break;
 			}
+			case E_LOCKEDDOOR:
+			case E_DOOR:{
+				drawSprite(
+					sprite_screen_x - BMP_DOOR_WIDTH * .5 / transform.y,
+					sprite_screen_y - 8 / transform.y,
+					bmp_door_bits,
+					bmp_door_bits,
+					BMP_DOOR_WIDTH,
+					BMP_DOOR_HEIGHT,
+					0,
+					transform.y
+						);
+				break;
+		    }
 		}
 	}
 }
